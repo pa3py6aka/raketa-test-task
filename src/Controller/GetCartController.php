@@ -6,44 +6,26 @@ namespace Raketa\BackendTestTask\Controller;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Raketa\BackendTestTask\Repository\CartManager;
+use Raketa\BackendTestTask\Domain\Interfaces\CartManagerInterface;
+use Raketa\BackendTestTask\Repository\ProductRepository;
 use Raketa\BackendTestTask\View\CartView;
 
-readonly class GetCartController
+readonly class GetCartController extends BaseController
 {
     public function __construct(
-        public CartView $cartView,
-        public CartManager $cartManager
+        private CartView $cartView,
+        private CartManagerInterface $cartManager,
+        private ProductRepository $productRepository,
     ) {
     }
 
-    public function get(RequestInterface $request): ResponseInterface
+    public function __invoke(RequestInterface $request): ResponseInterface
     {
-        $response = new JsonResponse();
-        $cart = $this->cartManager->getCart();
+        $cart = $this->cartManager->getCart($this->getCustomer()?->getId() ?: session_id());
 
-        if (! $cart) {
-            $response->getBody()->write(
-                json_encode(
-                    ['message' => 'Cart not found'],
-                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
-                )
-            );
+        $productUuids = $cart->getProductUuids();
+        $products = $this->productRepository->getByUuids($productUuids);
 
-            return $response
-                ->withHeader('Content-Type', 'application/json; charset=utf-8')
-                ->withStatus(404);
-        } else {
-            $response->getBody()->write(
-                json_encode(
-                    $this->cartView->toArray($cart),
-                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
-                )
-            );
-        }
-
-        return $response
-            ->withHeader('Content-Type', 'application/json; charset=utf-8')
-            ->withStatus(404);
+        return $this->asJson($this->cartView->toArray($cart, $products, $this->getCustomer()));
     }
 }

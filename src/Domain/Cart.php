@@ -6,10 +6,11 @@ namespace Raketa\BackendTestTask\Domain;
 
 final class Cart
 {
+    /**
+     * @param CartItem[] $items
+     */
     public function __construct(
         readonly private string $uuid,
-        readonly private Customer $customer,
-        readonly private string $paymentMethod,
         private array $items,
     ) {
     }
@@ -19,16 +20,6 @@ final class Cart
         return $this->uuid;
     }
 
-    public function getCustomer(): Customer
-    {
-        return $this->customer;
-    }
-
-    public function getPaymentMethod(): string
-    {
-        return $this->paymentMethod;
-    }
-
     public function getItems(): array
     {
         return $this->items;
@@ -36,6 +27,35 @@ final class Cart
 
     public function addItem(CartItem $item): void
     {
+        // Проверяем на дублирование товара(учитываем что цена может быть разная, например, по акции)
+        foreach ($this->items as $cartItem) {
+            if (
+                $cartItem->getProductUuid() === $item->getProductUuid()
+                && bccomp($cartItem->getPrice(), $item->getPrice(), 2) === 0
+            ) {
+                $cartItem->setQuantity($cartItem->getQuantity() + $item->getQuantity());
+                return;
+            }
+        }
+
         $this->items[] = $item;
+    }
+
+    public function getTotalPrice(): string
+    {
+        return array_reduce(
+            $this->items,
+            static fn (string $totalPrice, CartItem $item): string => bcadd(
+                $totalPrice,
+                bcmul($item->getPrice(), (string)$item->getQuantity(), 2),
+                2
+            ),
+            '0'
+        );
+    }
+
+    public function getProductUuids(): array
+    {
+        return array_map(static fn (CartItem $item): string => $item->getProductUuid(), $this->items);
     }
 }

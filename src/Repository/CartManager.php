@@ -4,49 +4,47 @@ declare(strict_types = 1);
 
 namespace Raketa\BackendTestTask\Repository;
 
-use Exception;
 use Psr\Log\LoggerInterface;
 use Raketa\BackendTestTask\Domain\Cart;
-use Raketa\BackendTestTask\Infrastructure\ConnectorFacade;
+use Raketa\BackendTestTask\Domain\Interfaces\CartManagerInterface;
+use Raketa\BackendTestTask\Infrastructure\ConnectorFactory;
+use Raketa\BackendTestTask\Infrastructure\ConnectorInterface;
+use Raketa\BackendTestTask\Infrastructure\Exceptions\ConnectorException;
+use Ramsey\Uuid\Uuid;
 
-class CartManager extends ConnectorFacade
+class CartManager implements CartManagerInterface
 {
-    public $logger;
+    private ConnectorInterface $connector;
 
-    public function __construct($host, $port, $password)
+    public function __construct(private LoggerInterface $logger, ConnectorFactory $connectorFactory)
     {
-        parent::__construct($host, $port, $password, 1);
-        parent::build();
-    }
-
-    public function setLogger(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
+        $this->connector = $connectorFactory->getConnector();
     }
 
     /**
      * @inheritdoc
      */
-    public function saveCart(Cart $cart)
+    public function saveCart(Cart $cart, string $key): bool
     {
         try {
-            $this->connector->set($cart, session_id());
-        } catch (Exception $e) {
-            $this->logger->error('Error');
+            return $this->connector->set($key, $cart);
+        } catch (ConnectorException $exception) {
+            $this->logger->error('Ошибка сохранения корзины', ['exception' => $exception]);
+            return false;
         }
     }
 
     /**
-     * @return ?Cart
+     * @inheritdoc
      */
-    public function getCart()
+    public function getCart(string $key): Cart
     {
         try {
-            return $this->connector->get(session_id());
-        } catch (Exception $e) {
-            $this->logger->error('Error');
+            $cart = $this->connector->get($key);
+        } catch (ConnectorException $exception) {
+            $this->logger->error('Ошибка при получении корзины', ['key' => $key, 'exception' => $exception]);
         }
 
-        return new Cart(session_id(), []);
+        return $cart ?? new Cart(Uuid::uuid4()->toString(), []);
     }
 }

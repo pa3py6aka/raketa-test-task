@@ -1,50 +1,48 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Raketa\BackendTestTask\Controller;
 
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Raketa\BackendTestTask\Domain\CartItem;
-use Raketa\BackendTestTask\Repository\CartManager;
+use Raketa\BackendTestTask\Command\AddItemToCartCommand;
+use Raketa\BackendTestTask\Infrastructure\Exceptions\ProductNotFoundException;
 use Raketa\BackendTestTask\Repository\ProductRepository;
 use Raketa\BackendTestTask\View\CartView;
-use Ramsey\Uuid\Uuid;
 
-readonly class AddToCartController
+readonly class AddToCartController extends BaseController
 {
     public function __construct(
         private ProductRepository $productRepository,
         private CartView $cartView,
-        private CartManager $cartManager,
     ) {
     }
 
-    public function get(RequestInterface $request): ResponseInterface
+    public function __invoke(RequestInterface $request): ResponseInterface
     {
-        $rawRequest = json_decode($request->getBody()->getContents(), true);
-        $product = $this->productRepository->getByUuid($rawRequest['productUuid']);
+        $rawRequest = json_decode($request->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $product = $this->productRepository->getByUuid($rawRequest['productUuid']);
+        } catch (ProductNotFoundException $exception) {
+            return $this->asJson(['status' => 'error', 'message' => 'Товар не найден:('], 404);
+        }
 
-        $cart = $this->cartManager->getCart();
-        $cart->addItem(new CartItem(
-            Uuid::uuid4()->toString(),
-            $product->getUuid(),
-            $product->getPrice(),
-            $rawRequest['quantity'],
-        ));
+        $result = (new AddItemToCartCommand(
+            $this->getCustomer()?->getId() ?: session_id(),
+            $product,
+            $rawRequest['quantity']
+        ))->execute();
 
-        $response = new JsonResponse();
-        $response->getBody()->write(
-            json_encode(
-                [
-                    'status' => 'success',
-                    'cart' => $this->cartView->toArray($cart)
-                ],
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
-            )
-        );
+        if ($result === false) {
+            return $this->asJson(['status' => 'error'], 422);
+        }
 
-        return $response
-            ->withHeader('Content-Type', 'application/json; charset=utf-8')
-            ->withStatus(200);
+        $products = $this->productRepository->getByUuids($result->getProductUuids());
+
+        return $this->asJson([
+            'status' => 'success',
+            'cart' => $this->cartView->toArray($result, $products, $this->getCustomer()),
+        ]);
     }
 }

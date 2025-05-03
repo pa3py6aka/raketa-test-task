@@ -4,13 +4,13 @@ declare(strict_types = 1);
 
 namespace Raketa\BackendTestTask\Domain;
 
-final readonly class CartItem
+final class CartItem
 {
     public function __construct(
-        public string $uuid,
-        public string $productUuid,
-        public float $price,
-        public int $quantity,
+        private readonly string $uuid,
+        private readonly string $productUuid,
+        private readonly string $price,
+        private int $quantity,
     ) {
     }
 
@@ -24,7 +24,7 @@ final readonly class CartItem
         return $this->productUuid;
     }
 
-    public function getPrice(): float
+    public function getPrice(): string
     {
         return $this->price;
     }
@@ -32,5 +32,16 @@ final readonly class CartItem
     public function getQuantity(): int
     {
         return $this->quantity;
+    }
+
+    public function setQuantity(int $quantity): self
+    {
+        $this->quantity = $quantity;
+        return $this;
+    }
+
+    public function getTotalPrice(): string
+    {
+        return bcmul($this->price, (string)$this->quantity, 2);
     }
 }
